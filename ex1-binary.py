@@ -53,7 +53,7 @@ print("X",X.transpose())
 print("y",y)
 
 ########################
-print("MLJAR")
+print("MLJAR Random forest classification")
 clf_mlj = Mljar(
   project='Recon mljar-sklearn',
   # experiment='Experiment 1', # for n_samples = 50
@@ -100,5 +100,5 @@ print("pred_skl",pred_skl) # shows values = 0 or 2
 print("same",(pred_skl==y).all()) # returns True
 
 pred_proba_skl = clf_skl.predict_proba(X)
-print("pred_proba_skl",pred_proba_skl) # shows values = 0 or 1
+print("pred_proba_skl",pred_proba_skl.transpose()) # shows values = 0 or 1
 
