@@ -56,16 +56,17 @@ print("y",y)
 print("MLJAR Random forest classification")
 clf_mlj = Mljar(
   project='Recon mljar-sklearn',
-  # experiment='Experiment 1', # for n_samples = 50
-  # experiment='Experiment 2', # for n_samples = 100, and 2 classes: 0, 1
-  # experiment='Experiment 3', # for n_samples = 100, and 2 classes: 0, 2
-  experiment='Experiment 4', # for n_samples = 100, and 2 classes: 0, 2, and just re-run anew for probabilities
+  # experiment='Ex 1.1', # for n_samples = 50
+  # experiment='Ex 1.2', # for n_samples = 100, and 2 classes: 0, 1
+  # experiment='Ex 1.3', # for n_samples = 100, and 2 classes: 0, 2
+  # experiment='Ex 1.4', # for n_samples = 100, and 2 classes: 0, 2, and just re-run anew for probabilities
+  experiment='Ex 1.5', # as 1.4, but with validation_train_split=0.95
   metric='auc',
   algorithms=['rfc'],
   validation_kfolds=None,
   validation_shuffle=False,
   validation_stratify=True,
-  validation_train_split=0.05,
+  validation_train_split=0.95,
   tuning_mode='Normal', # Used Sport for experiments 1-3
   create_ensemble=False,
   single_algorithm_time_limit='1'
@@ -75,10 +76,11 @@ print("fit")
 clf_mlj.fit(X,y) #,dataset_title="Ones and zeros")
 
 print("predict")
-pred_mlj = clf_mlj.predict(X)
-pred_mlj = pred_mlj.squeeze().values
-print("pred_mlj",pred_mlj) # shows values = 0.45 or 0.55
-print("same",(pred_mlj==y).all()) # returns False
+pred_proba_mlj = clf_mlj.predict(X)
+pred_proba_mlj = pred_proba_mlj.squeeze().values
+print("pred_proba_mlj",pred_proba_mlj) # shows values = 0 or 1
+pred_mlj = [2 if x==1 else 0 for x in pred_proba_mlj]
+print("prediction mljar == actual",(pred_mlj==y).all()) # returns True
 
 # mljar_fit_params = {'max_features': 0.5, 'min_samples_split': 50, 'criterion': "gini",    'min_samples_leaf': 1}
 # mljar_fit_params = {'max_features': 0.7, 'min_samples_split':  4, 'criterion': "entropy", 'min_samples_leaf': 2}
@@ -97,8 +99,12 @@ clf_skl.fit(X, y)
 pred_skl = clf_skl.predict(X)
 
 print("pred_skl",pred_skl) # shows values = 0 or 2
-print("same",(pred_skl==y).all()) # returns True
+print("prediction skl == actual",(pred_skl==y).all()) # returns True
 
 pred_proba_skl = clf_skl.predict_proba(X)
-print("pred_proba_skl",pred_proba_skl.transpose()) # shows values = 0 or 1
+pred_proba_skl = pred_proba_skl[:,pred_proba_skl.shape[1]-1]
+print("pred_proba_skl",pred_proba_skl) # shows values = 0 or 1
+
+print("probability from mlj == probability from skl: ",(pred_proba_mlj==pred_proba_skl).all()) # returns True
+np.matrix([pred_proba_mlj,pred_proba_skl,y]).transpose()
 
