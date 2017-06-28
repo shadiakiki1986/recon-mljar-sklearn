@@ -22,6 +22,7 @@ if not sys.version_info < MAX_VERSION_INFO:
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.datasets.samples_generator import make_blobs
 from sklearn.metrics import log_loss, mean_squared_error
 from sklearn.model_selection import train_test_split
@@ -53,23 +54,20 @@ print("y",y)
 print("MLJAR Random forest classification")
 clf_mlj = Mljar(
   project='Recon mljar-sklearn',
-  # experiment='Ex 2.1', # validation_train_split=0.05
-  # experiment='Ex 2.2', # manual through website
-  # experiment='Ex 2.3', # validation_train_split=0.95
-  experiment='Ex 2.4', # cache the data locally at the same time as uploading to be able to replicate results
+  experiment='Ex 3.1', # use ex2 cached data, but with 5-fold cross-validation
   metric='auc',
   algorithms=['rfc'],
-  validation_kfolds=None,
+  validation_kfolds=5,
   validation_shuffle=False,
   validation_stratify=True,
-  validation_train_split=0.95,
+  validation_train_split=None,
   tuning_mode='Normal',
   create_ensemble=False,
   single_algorithm_time_limit='1'
 )
 
 print("fit")
-clf_mlj.fit(X,y) #,dataset_title="sklearn make_blobs")
+clf_mlj.fit(X,y) #,dataset_title="sklearn make_blobs + k-fold")
 
 # Until https://github.com/mljar/mljar-api-python/issues/2
 # gets fixed,
@@ -95,23 +93,17 @@ pred_proba_mlj = clf_mlj.predict(X)
 pred_proba_mlj = pred_proba_mlj.squeeze().values
 print("pred_proba_mlj",pred_proba_mlj) # shows probabilities
 print("log loss mlj:",log_loss(y,pred_proba_mlj))
-# ('log loss mlj:', 0.08802854536726222)
+# ('log loss mlj:', 0.08321280267622938)
 
 pred_mlj = [1 if x>0.5 else 0 for x in pred_proba_mlj]
 print("mse mlj:",mean_squared_error(y,pred_proba_mlj))
-# ('mse mlj:', 0.030547386604540198)
+# ('mse mlj:', 0.028762043544997624)
 
-# mljar_fit_params = {'max_features': 0.5, 'min_samples_split': 50, 'criterion': "gini",    'min_samples_leaf': 1}
-# mljar_fit_params = {'max_features': 0.7, 'min_samples_split':  4, 'criterion': "entropy", 'min_samples_leaf': 2}
-# mljar_fit_params = {u'max_features': 0.5, u'min_samples_split': 8, u'criterion': u'gini', u'min_samples_leaf': 6}
+# ('mljar_fit_params', {u'max_features': 0.7, u'min_samples_split': 8, u'criterion': u'entropy', u'min_samples_leaf': 4})
 mljar_fit_params = clf_mlj.selected_algorithm.params['model_params']['fit_params']
 print("mljar_fit_params", mljar_fit_params)
 
-# TODO repeat with random_seed instead of 2016
 random_seed = clf_mlj.selected_algorithm.params['random_seed']
-# random_seed = 2016
-# ...
-# >>> clf_mlj.selected_algorithm.params['train_params']['cv_state']
 
 ########################
 print("Random forest with same params")
@@ -123,35 +115,31 @@ clf_skl = RandomForestClassifier(
   min_samples_leaf = mljar_fit_params['min_samples_leaf'],
   random_state=2016
 )
-# clf_skl.fit(X, y)
-# clf_skl.fit(X[0:95,], y[0:95,])
-X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.95, stratify=y, random_state=random_seed)
-clf_skl.fit(X_train, y_train)
 
-pred_proba_skl = clf_skl.predict_proba(X)
+# http://scikit-learn.org/stable/modules/generated/sklearn.calibration.CalibratedClassifierCV.html
+clf_skl_sig = CalibratedClassifierCV(clf_skl, cv=5, method='sigmoid')
+clf_skl_sig.fit(X, y)
+
+pred_proba_skl = clf_skl_sig.predict_proba(X)
 pred_proba_skl = pred_proba_skl[:,pred_proba_skl.shape[1]-1]
 print("pred_proba_skl",pred_proba_skl) # shows probabilities between 0 and 1, with plenty of values being 0 or 1
 print("log loss skl:",log_loss(y,pred_proba_skl))
-# ('log loss skl:', 0.083311532661261858)
+# ('log loss skl:', 0.17435998101042061)
 
-pred_skl = clf_skl.predict(X)
+pred_skl = clf_skl_sig.predict(X)
 print("pred_skl",pred_skl) # shows values = 0 or 1
 print("same",(pred_skl==y).all()) # returns False
 print("mse skl:",mean_squared_error(y,pred_skl))
-# ('mse skl:', 0.040000000000000001)
+# ('mse skl:', 0.050000000000000003)
 
 print(np.matrix([pred_proba_mlj,pred_proba_skl,y]).transpose())
-# Differences below depend on the random_state used in train_test_split
-#
-# [[ 1.          1.          1.        ]
-#  [ 0.03076923  0.          0.        ] <<<<<< not exact same
-#  [ 0.          0.          0.        ]
-#  [ 0.          0.          0.        ]
-#  [ 1.          1.          1.        ]
-#  [ 1.          1.          1.        ]
-#  [ 0.          0.          0.        ]
-#  [ 1.          1.          1.        ]
-#  [ 0.60767399  0.5247619   1.        ] <<<<<< not exact same
-#  [ 0.          0.          0.        ]
-#  [ 0.95        0.9         1.        ] <<<<<< not exact same
+# Lots of differences below. TODO figure out why
+# [[ 1.          0.90302887  1.        ]
+#  [ 0.04604545  0.14223289  0.        ]
+#  [ 0.          0.09639619  0.        ]
+#  [ 0.          0.09639619  0.        ]
+#  [ 1.          0.90302887  1.        ]
+#  [ 1.          0.90302887  1.        ]
+#  [ 0.          0.09639619  0.        ]
+#  [ 1.          0.90302887  1.        ]
 #  ...
