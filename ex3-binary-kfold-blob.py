@@ -79,8 +79,8 @@ results = client.get_results(clf_mlj.experiment.hid)
 # len(results) # returns 75
 # results = client.get_results(None)
 # len(results) # also returns 75
-# rid = 'RMxezRO0eaGy'
-rid = raw_input("Enter result ID from mljar.com (until issue#2 is solved): ")
+rid = raw_input("Enter result ID from mljar.com until issue#2 is solved [x13mlMRd4jwO]: ")
+if rid == '': rid = 'x13mlMRd4jwO'
 selected = [x for x in results if x.hid==rid]
 if len(selected)!=1:
   raise Exception("len(selected)!=1")
@@ -99,32 +99,46 @@ pred_mlj = [1 if x>0.5 else 0 for x in pred_proba_mlj]
 print("mse mlj:",mean_squared_error(y,pred_proba_mlj))
 # ('mse mlj:', 0.028762043544997624)
 
-# ('mljar_fit_params', {u'max_features': 0.7, u'min_samples_split': 8, u'criterion': u'entropy', u'min_samples_leaf': 4})
 mljar_fit_params = clf_mlj.selected_algorithm.params['model_params']['fit_params']
 print("mljar_fit_params", mljar_fit_params)
+# ('mljar_fit_params', {u'max_features': 0.7, u'min_samples_split': 8, u'criterion': u'entropy', u'min_samples_leaf': 4})
 
-random_seed = clf_mlj.selected_algorithm.params['random_seed']
+# several options of seeds
+# Not sure which one is used by mljar
+# Based on trial/error, chose 2016 for the constructor and cv_state for the train_test_split
+# Documented in diary/_posts/2017-06-29....md
+random_seed = [
+  2016,
+  clf_mlj.selected_algorithm.params['random_seed'],
+  clf_mlj.selected_algorithm.params['train_params']['cv_state'],
+  None
+]
 
 ########################
 print("Random forest with same params")
+i=0
+j=2
 clf_skl = RandomForestClassifier(
   n_estimators = 5,
   criterion = mljar_fit_params['criterion'],
   max_features = mljar_fit_params['max_features'],
   min_samples_split = mljar_fit_params['min_samples_split'],
   min_samples_leaf = mljar_fit_params['min_samples_leaf'],
-  random_state=2016
+  random_state=random_seed[i]
 )
 
 # http://scikit-learn.org/stable/modules/generated/sklearn.calibration.CalibratedClassifierCV.html
-clf_skl_sig = CalibratedClassifierCV(clf_skl, cv=5, method='sigmoid')
+clf_skl_sig = CalibratedClassifierCV(clf_skl, cv=5, method='isotonic') #sigmoid')
 clf_skl_sig.fit(X, y)
 
 pred_proba_skl = clf_skl_sig.predict_proba(X)
 pred_proba_skl = pred_proba_skl[:,pred_proba_skl.shape[1]-1]
+print("mse(skl,mlj)[%i,%i]*1000 = %0.4f" % (i, j, 1000*mean_squared_error(pred_proba_mlj,pred_proba_skl)) )
+# mse(skl,mlj)[0,2]*1000 = 1.0106
+
 print("pred_proba_skl",pred_proba_skl) # shows probabilities between 0 and 1, with plenty of values being 0 or 1
 print("log loss skl:",log_loss(y,pred_proba_skl))
-# ('log loss skl:', 0.17435998101042061)
+# ('log loss skl:', 0.083826026574212092)
 
 pred_skl = clf_skl_sig.predict(X)
 print("pred_skl",pred_skl) # shows values = 0 or 1
@@ -133,7 +147,7 @@ print("mse skl:",mean_squared_error(y,pred_skl))
 # ('mse skl:', 0.050000000000000003)
 
 print(np.matrix([pred_proba_mlj,pred_proba_skl,y]).transpose())
-# Lots of differences below. TODO figure out why
+# Lots of differences below. Turns out was due to sigmoid method
 # [[ 1.          0.90302887  1.        ]
 #  [ 0.04604545  0.14223289  0.        ]
 #  [ 0.          0.09639619  0.        ]
@@ -143,3 +157,15 @@ print(np.matrix([pred_proba_mlj,pred_proba_skl,y]).transpose())
 #  [ 0.          0.09639619  0.        ]
 #  [ 1.          0.90302887  1.        ]
 #  ...
+#
+# Using isotonic is a much better fit to MLJAR results
+# [[ 1.          1.          1.        ]
+#  [ 0.04604545  0.05543478  0.        ]
+#  [ 0.          0.          0.        ]
+#  [ 0.          0.          0.        ]
+#  [ 1.          1.          1.        ]
+#  [ 1.          1.          1.        ]
+#  [ 0.          0.          0.        ]
+#  [ 1.          1.          1.        ]
+#  [ 0.60762321  0.45881643  1.        ]
+# ...
