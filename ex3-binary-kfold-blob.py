@@ -4,9 +4,9 @@ Reconciling results from MLJAR and sklearn.
   X,y from scikit-learn make_blobs
 
 Usage
-  python ex2-binary-noKFold-blob.py
+  python ex3-binary-kfold-blob.py
   or
-  >>> exec(open("ex2-binary-noKFold-blob.py").read(), globals())
+  >>> exec(open("ex3-binary-kfold-blob.py").read(), globals())
 """
 
 print(__doc__)
@@ -25,7 +25,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.datasets.samples_generator import make_blobs
 from sklearn.metrics import log_loss, mean_squared_error
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from mljar import Mljar
 import pickle
 from os import path
@@ -52,12 +52,13 @@ print("y",y)
 
 ########################
 print("MLJAR Random forest classification")
+validation_kfolds=5
 clf_mlj = Mljar(
   project='Recon mljar-sklearn',
   experiment='Ex 3.1', # use ex2 cached data, but with 5-fold cross-validation
   metric='auc',
   algorithms=['rfc'],
-  validation_kfolds=5,
+  validation_kfolds=validation_kfolds,
   validation_shuffle=False,
   validation_stratify=True,
   validation_train_split=None,
@@ -80,7 +81,7 @@ results = client.get_results(clf_mlj.experiment.hid)
 # results = client.get_results(None)
 # len(results) # also returns 75
 rid = raw_input("Enter result ID from mljar.com until issue#2 is solved [x13mlMRd4jwO]: ")
-if rid == '': rid = 'x13mlMRd4jwO'
+rid = 'x13mlMRd4jwO' if rid=='' else rid
 selected = [x for x in results if x.hid==rid]
 if len(selected)!=1:
   raise Exception("len(selected)!=1")
@@ -127,18 +128,28 @@ clf_skl = RandomForestClassifier(
   random_state=random_seed[i]
 )
 
+# http://scikit-learn.org/stable/modules/generated/sklearn.model_selection.StratifiedKFold.html#sklearn.model_selection.StratifiedKFold
+# skf = 5
+skf = StratifiedKFold(n_splits=validation_kfolds, shuffle=True, random_state=random_seed[j])
+
 # http://scikit-learn.org/stable/modules/generated/sklearn.calibration.CalibratedClassifierCV.html
-clf_skl_sig = CalibratedClassifierCV(clf_skl, cv=5, method='isotonic') #sigmoid')
+clf_skl_sig = CalibratedClassifierCV(clf_skl, cv=skf, method='isotonic') #sigmoid')
 clf_skl_sig.fit(X, y)
 
 pred_proba_skl = clf_skl_sig.predict_proba(X)
 pred_proba_skl = pred_proba_skl[:,pred_proba_skl.shape[1]-1]
 print("mse(skl,mlj)[%i,%i]*1000 = %0.4f" % (i, j, 1000*mean_squared_error(pred_proba_mlj,pred_proba_skl)) )
+# With skf = 5
 # mse(skl,mlj)[0,2]*1000 = 1.0106
+# with skf = StratifiedKFold
+# mse(skl,mlj)[0,2]*1000 = 0.5225
 
 print("pred_proba_skl",pred_proba_skl) # shows probabilities between 0 and 1, with plenty of values being 0 or 1
 print("log loss skl:",log_loss(y,pred_proba_skl))
+# with skf=5
 # ('log loss skl:', 0.083826026574212092)
+# with skf = stratified
+# ('log loss skl:', 0.082311601789180816)
 
 pred_skl = clf_skl_sig.predict(X)
 print("pred_skl",pred_skl) # shows values = 0 or 1
@@ -147,7 +158,7 @@ print("mse skl:",mean_squared_error(y,pred_skl))
 # ('mse skl:', 0.050000000000000003)
 
 print(np.matrix([pred_proba_mlj,pred_proba_skl,y]).transpose())
-# Lots of differences below. Turns out was due to sigmoid method
+# With skf=5, and method=sigmoid: lots of differences below
 # [[ 1.          0.90302887  1.        ]
 #  [ 0.04604545  0.14223289  0.        ]
 #  [ 0.          0.09639619  0.        ]
@@ -168,4 +179,18 @@ print(np.matrix([pred_proba_mlj,pred_proba_skl,y]).transpose())
 #  [ 0.          0.          0.        ]
 #  [ 1.          1.          1.        ]
 #  [ 0.60762321  0.45881643  1.        ]
+# ...
+#
+# Further, passing skf=StratifiedKFold(...shuffle=True) instead of skf=5
+# [[ 1.          1.          1.        ]
+#  [ 0.04604545  0.          0.        ]
+#  [ 0.          0.          0.        ]
+#  [ 0.          0.          0.        ]
+#  [ 1.          1.          1.        ]
+#  [ 1.          1.          1.        ]
+#  [ 0.          0.          0.        ]
+#  [ 1.          1.          1.        ]
+#  [ 0.60762321  0.52257292  1.        ]
+#  [ 0.          0.          0.        ]
+#  [ 0.95573016  1.          1.        ]
 # ...
